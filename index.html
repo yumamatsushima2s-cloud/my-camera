@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML5 カメラアプリ</title>
+    <style>
+        :root {
+            --primary: #4a90e2;
+            --accent: #ff4757;
+            --bg: #f8f9fa;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #333;
+        }
+
+        h1 { margin: 20px 0; font-size: 1.5rem; }
+
+        /* ビデオ・プレビューエリア */
+        .camera-box {
+            position: relative;
+            width: 90%;
+            max-width: 500px;
+            aspect-ratio: 4 / 3;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        canvas { display: none; } /* 撮影処理用なので非表示 */
+
+        /* 操作ボタン */
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            gap: 15px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+
+        button:active { transform: scale(0.95); }
+
+        #btn-start { background-color: var(--primary); color: white; }
+        #btn-shutter { background-color: var(--accent); color: white; display: none; }
+
+        /* 撮影済み写真の表示 */
+        #photo-result {
+            margin-top: 20px;
+            width: 80%;
+            max-width: 300px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            display: none;
+        }
+
+        #download-link {
+            margin: 10px 0 30px;
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Web Camera App</h1>
+
+    <div class="camera-box">
+        <video id="video" autoplay playsinline></video>
+    </div>
+
+    <div class="controls">
+        <button id="btn-start">カメラを起動する</button>
+        <button id="btn-shutter">📸 撮影</button>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <img id="photo-result" alt="撮った写真">
+    <a id="download-link">画像を保存する</a>
+
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const btnStart = document.getElementById('btn-start');
+        const btnShutter = document.getElementById('btn-shutter');
+        const photoResult = document.getElementById('photo-result');
+        const downloadLink = document.getElementById('download-link');
+
+        // カメラ起動処理
+        btnStart.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: "user", // 自撮りなら "user"、外カメラなら "environment"
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+                video.srcObject = stream;
+                btnStart.style.display = 'none';
+                btnShutter.style.display = 'block';
+            } catch (err) {
+                alert("カメラの起動に失敗しました。ブラウザの設定で許可してください。");
+                console.error(err);
+            }
+        });
+
+        // 撮影処理
+        btnShutter.addEventListener('click', () => {
+            const context = canvas.getContext('2d');
+            
+            // ビデオの解像度をキャンバスに反映
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            
+            // 現在の映像をキャンバスに描画
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // 画像データ(base64)を作成して表示
+            const imageData = canvas.toDataURL('image/png');
+            photoResult.src = imageData;
+            photoResult.style.display = 'block';
+
+            // ダウンロードリンクの設定
+            downloadLink.href = imageData;
+            downloadLink.download = `photo_${new Date().getTime()}.png`;
+            downloadLink.style.display = 'block';
+            
+            // 撮影の瞬間だけ画面を光らせる演出（おまけ）
+            document.body.style.backgroundColor = "#fff";
+            setTimeout(() => { document.body.style.backgroundColor = "#f8f9fa"; }, 100);
+        });
+    </script>
+</body>
+</html>
