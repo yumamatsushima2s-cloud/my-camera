@@ -18,7 +18,7 @@ app.add_middleware(
 )
 
 # モデルの読み込み
-model = YOLO("best.pt")
+model = YOLO(./"best.pt")
 
 @app.post("/detect")
 async def detect_objects(file: UploadFile = File(...)):
