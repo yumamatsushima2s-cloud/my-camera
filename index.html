@@ -3,81 +3,169 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AIリアルタイム判定カメラ</title>
+    <title>AI物体検知カメラ</title>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #999; margin: 0; padding: 20px; }
-        video, img { width: 100%; max-width: 500px; border-radius: 10px; display: block; margin: 10px auto; }
-        #btn-shutter { padding: 15px 30px; font-size: 1.2rem; cursor: pointer; border-radius: 30px; border: none; background: #333; color: white; }
-        #btn-shutter.active { background: #d9534f; }
-        #loading { display: none; color: #002255; font-weight: bold; }
+        :root {
+            --primary: #4a90e2;
+            --accent: #ff4757;
+            --bg: #f8f9fa;
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            background-color: var(--bg);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #333;
+        }
+
+        h1 { margin: 20px 0; font-size: 1.5rem; }
+
+        .camera-box {
+            position: relative;
+            width: 90%;
+            max-width: 500px;
+            aspect-ratio: 4 / 3;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        canvas { display: none; }
+
+        .controls {
+            margin: 20px 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 1rem;
+            font-weight: bold;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: transform 0.1s, opacity 0.2s;
+        }
+
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+
+        #btn-start { background-color: var(--primary); color: white; }
+        #btn-shutter { background-color: var(--accent); color: white; display: none; }
+
+        #loading-msg { display: none; color: var(--primary); font-weight: bold; margin-top: 10px; }
+
+        #photo-result {
+            margin-top: 20px;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <h2>AIリアルタイム判定カメラ</h2>
-    <video id="video" autoplay playsinline></video>
-    <button id="btn-shutter">📸 リアルタイム判定開始</button>
-    <p id="loading">AI解析中...</p>
-    <img id="photo-result">
-    <canvas id="canvas" style="display:none;"></canvas>
+
+    <h1>AI物体検知カメラ</h1>
+
+    <div class="camera-box">
+        <video id="video" autoplay playsinline></video>
+    </div>
+
+    <div class="controls">
+        <button id="btn-start">カメラを起動する</button>
+        <button id="btn-shutter">📸 撮影してAI判定</button>
+        <div id="loading-msg">AIが解析中...（初回は1分ほどかかります）</div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <img id="photo-result" alt="判定結果画像">
 
     <script>
         const video = document.getElementById('video');
         const canvas = document.getElementById('canvas');
+        const btnStart = document.getElementById('btn-start');
         const btnShutter = document.getElementById('btn-shutter');
         const photoResult = document.getElementById('photo-result');
-        const loadingMsg = document.getElementById('loading');
+        const loadingMsg = document.getElementById('loading-msg');
 
-        // ★あなたのRenderのURLに書き換えてください
-        const API_URL = "https://my-yolo-api-h2h5.onrender.com/detect";
+        // ★★★ ここをRenderのURLに書き換えてください ★★★
+        const API_URL = "https://my-yolo-api.onrender.com/detect";
 
-        let isDetecting = false;
-
-        // カメラ起動
-        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
-            .then(stream => { video.srcObject = stream; });
-
-        btnShutter.addEventListener('click', () => {
-            if (!isDetecting) {
-                isDetecting = true;
-                btnShutter.textContent = "⏹ 停止する";
-                btnShutter.classList.add('active');
-                startDetectionLoop();
-            } else {
-                isDetecting = false;
-                btnShutter.textContent = "📸 リアルタイム判定開始";
-                btnShutter.classList.remove('active');
-                loadingMsg.style.display = 'none';
+        // カメラ起動処理
+        btnStart.addEventListener('click', async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: "environment", // 外カメラ優先
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+                video.srcObject = stream;
+                btnStart.style.display = 'none';
+                btnShutter.style.display = 'block';
+            } catch (err) {
+                alert("カメラの起動に失敗しました。");
+                console.error(err);
             }
         });
 
-        async function startDetectionLoop() {
-            while (isDetecting) {
-                const context = canvas.getContext('2d');
-                // 通信軽量化のためサイズを縮小
-                canvas.width = video.videoWidth * 0.5;
-                canvas.height = video.videoHeight * 0.5;
-                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        // 撮影とAI送信処理
+        btnShutter.addEventListener('click', () => {
+            const context = canvas.getContext('2d');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            context.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-                loadingMsg.style.display = 'block';
+            // 解析中の表示
+            loadingMsg.style.display = 'block';
+            btnShutter.disabled = true;
 
-                const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.6));
+            // Canvasから画像データを作成してAPIに送信
+            canvas.toBlob(async (blob) => {
                 const formData = new FormData();
-                formData.append('file', blob, 'image.jpg');
+                formData.append('file', blob, 'image.png');
 
                 try {
-                    const response = await fetch(API_URL, { method: 'POST', body: formData });
-                    if (response.ok && isDetecting) {
+                    const response = await fetch(API_URL, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (response.ok) {
                         const resultBlob = await response.blob();
-                        photoResult.src = URL.createObjectURL(resultBlob);
+                        const resultURL = URL.createObjectURL(resultBlob);
+                        
+                        // 判定結果画像（枠付き）を表示
+                        photoResult.src = resultURL;
+                        photoResult.style.display = 'block';
+                    } else {
+                        alert("サーバーからの応答エラーです。");
                     }
                 } catch (err) {
-                    console.error("通信エラー:", err);
+                    alert("AIサーバーに接続できませんでした。Renderが起動中か確認してください。");
+                } finally {
+                    loadingMsg.style.display = 'none';
+                    btnShutter.disabled = false;
                 }
-
-                // サーバーの負荷軽減のため1.5秒待機
-                await new Promise(resolve => setTimeout(resolve, 1500));
-            }
-        }
+            }, 'image/png');
+        });
     </script>
 </body>
 </html>
